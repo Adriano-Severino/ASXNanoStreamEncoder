@@ -46,9 +46,7 @@ private:
         if (_repeatCount > 1) {
             // No protocolo ASX simples, o hífen já conecta, 
             // mas se for um bloco complexo, usaria '&'. 
-            // Para comandos simples, o prefixo basta.
-            // Vamos adicionar um separador '#' para segurança se não for o fim
-            // _payload += "#"; 
+            // Para comandos simples, o prefixo basta. 
         }
 
         // Reseta o estado
