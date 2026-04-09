@@ -114,6 +114,23 @@ asx.add("bat", 95);
 
 ---
 
+## ☁️ ASX Cloud Platform (Coming Soon)
+
+`ASXNanoStream Encoder` is the Edge component of a complete IoT stack.
+The managed cloud platform is in final development and will soon be available for commercial use.
+
+What this cloud service will provide:
+- Secure multi-tenant uplink ingestion for ASX/Base64 telemetry.
+- ASX payload decoding pipeline with JSON delivery to your backend.
+- Webhook integration with message-signing support (HMAC).
+- Downlink command flow for cloud-to-device operations.
+- Analytics for payload efficiency and estimated communication cost savings.
+
+**Official cloud platform URL:** _coming soon_  
+**Commercial onboarding:** contact the maintainer by email (`adriano.asx@outlook.com`) to join the early access list.
+
+---
+
 ## 🤝 Contributing
 Contributions are welcome! 
 1. Fork the Project
