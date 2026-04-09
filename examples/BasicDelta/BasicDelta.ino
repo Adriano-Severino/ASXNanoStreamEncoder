@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "AsxNanoStream.h"
+#include "ASXNanoStream.h"
 
 AsxNanoStream asx;
 

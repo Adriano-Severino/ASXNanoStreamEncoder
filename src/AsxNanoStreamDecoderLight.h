@@ -1,6 +1,6 @@
 /*
  * ASXNanoStream Protocol - Decoder Library (Edge/Arduino)
- * Version: 1.0.0
+ * Version: 1.0.1
  * License: MIT
  * Author: Adriano Severino
  * 
@@ -28,7 +28,7 @@ public:
     }
 
     // Processa o pacote recebido do Satélite/LoRa
-    void parse(String payload) {
+    void parse(const String& payload) {
         int cursor = 0;
         int len = payload.length();
 
@@ -57,7 +57,7 @@ public:
             }
             
             // Convenção: Chave será "BIN"
-            if (isDigit(payload[cursor]) && payload[cursor+1] == 'b') {
+            if ((cursor + 1) < len && isDigit(payload[cursor]) && payload[cursor + 1] == 'b') {
                  int val = (payload[cursor] == '1') ? 1 : 0;
                  if (_callback) {
                      _callback("BIN", val);

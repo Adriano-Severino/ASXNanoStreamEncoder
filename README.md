@@ -25,11 +25,11 @@ This library allows any microcontroller (Arduino, ESP32, etc.) to generate highl
 
 This is a **header-only** library. No complex build process required.
 
-1. Download the [`AsxNanoStream.h`](AsxNanoStream.h) file.
+1. Download the [`ASXNanoStream.h`](src/ASXNanoStream.h) file.
 2. Copy it to your project folder (or `libraries` folder).
 3. Include it in your code:
    ```cpp
-   #include "AsxNanoStream.h"
+   #include <ASXNanoStream.h>
    ```
 
 
@@ -40,7 +40,7 @@ This is a **header-only** library. No complex build process required.
 ### 1. Basic Setup
 
 ```cpp
-#include "AsxNanoStream.h"
+#include <ASXNanoStream.h>
 
 AsxNanoStream asx;
 
