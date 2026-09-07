@@ -1,8 +1,8 @@
 /*
  * ASXNanoStream Protocol - Decoder Library (Edge/Arduino)
- * Version: 1.0.1
+ * Version: 1.0.2
  * License: MIT
- * Author: Adriano Severino
+ * Author: Adriano Xavier
  * 
  * Use this library to decode DOWNLINK commands sent from the ASX Cloud.
  * It converts compressed streams (e.g., "KLED:1#") into C++ Callbacks.
