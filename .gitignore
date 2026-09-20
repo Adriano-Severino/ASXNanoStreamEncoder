@@ -1,0 +1,9 @@
+# Generated test and firmware outputs are not Arduino library sources.
+/build/
+*.exe
+*.o
+*.obj
+*.pdb
+*.ilk
+*.dll
+/tests/*_results.json

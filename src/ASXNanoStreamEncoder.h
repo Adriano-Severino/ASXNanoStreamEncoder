@@ -1,150 +1,290 @@
 /*
  * ASXNanoStream Protocol - Encoder Library (C++)
- * Version: 1.0.2
+ * Version: 1.0.4
  * License: MIT
  * Author: Adriano Xavier
  */
-
 #ifndef ASX_NANO_STREAM_H
 #define ASX_NANO_STREAM_H
 
 #include <Arduino.h>
+#include <stdint.h>
+#include <limits.h>
+#include <string.h>
+
+enum class AsxEncoderStatus : uint8_t
+{
+    Success = 0,
+    FlushRequired = 1,
+    BufferFull = 2,
+    InvalidInput = 3
+};
 
 class AsxNanoStream
 {
+public:
+    static const uint32_t MAX_V1_DURATION_MS = 65535U;
+    static const int32_t MAX_ANALOG_VALUE = 2147483647;
+    static const int32_t MIN_ANALOG_VALUE = -2147483647 - 1;
+
 private:
     String _payload;
+    // Every generated command fits: sign, ten decimal digits, 'v', NUL.
+    // Fixed storage makes accepting a pending command independent of heap allocation.
+    char _pendingCommand[13];
+    uint32_t _pendingDuration;
+    uint32_t _repeatCount;
+    int32_t _lastAnalogValue;
+    size_t _maxPayloadCapacity;
+    uint32_t _maxRepeatCount;
+    uint32_t _maxSampleCount;
+    uint32_t _sampleCount;
+    bool _overflowed;
 
-    // Estado para RLE (Compressão de repetição)
-    String _pendingCommand;
-    uint16_t _pendingDuration;
-    int _repeatCount;
-
-    // Estado para Delta Encoding (Analógico)
-    int _lastAnalogValue;
-
-    // Função interna para "despejar" o comando pendente no payload
-    void flushPending()
+    static char* writeUnsigned(char* output, uint64_t value)
     {
-        if (_repeatCount == 0)
-            return;
-
-        // Se repetiu mais de 1 vez, adiciona o prefixo de loop "xN-"
-        if (_repeatCount > 1)
+        char reversed[20];
+        uint8_t count = 0;
+        do
         {
-            _payload += "x";
-            _payload += _repeatCount;
-            _payload += "-";
+            reversed[count++] = static_cast<char>('0' + value % 10);
+            value /= 10;
+        } while (value != 0);
+        while (count != 0) *output++ = reversed[--count];
+        *output = '\0';
+        return output;
+    }
+
+    void appendUnsigned(uint32_t value)
+    {
+        char digits[11];
+        writeUnsigned(digits, value);
+        _payload += digits;
+    }
+
+    static uint64_t encodedCost(size_t commandLength, uint32_t duration, uint32_t repeats)
+    {
+        if (repeats == 0) return 0;
+        const uint64_t unitLength = static_cast<uint64_t>(commandLength) +
+            (duration > 0 ? digitCount(duration) + 2 : 0);
+        const uint64_t literalCost = static_cast<uint64_t>(repeats) * unitLength;
+        const uint64_t rleCost = 2 + digitCount(repeats) + unitLength;
+        return repeats > 1 && rleCost <= literalCost ? rleCost : literalCost;
+    }
+
+    bool continuesPending(const char* command, uint32_t duration) const
+    {
+        return _repeatCount > 0 && _repeatCount < UINT32_MAX &&
+            (_maxRepeatCount == 0 || _repeatCount < _maxRepeatCount) &&
+            duration == _pendingDuration && strcmp(command, _pendingCommand) == 0;
+    }
+
+    uint64_t calculateProspectiveLength(const char* command, uint32_t duration) const
+    {
+        if (continuesPending(command, duration))
+            return static_cast<uint64_t>(_payload.length()) +
+                encodedCost(strlen(command), duration, _repeatCount + 1);
+        return static_cast<uint64_t>(length()) + encodedCost(strlen(command), duration, 1);
+    }
+
+    bool fitsCapacity(uint64_t bytes) const
+    {
+        // AVR String lengths are unsigned int; leave room for the terminating NUL.
+        // Apply this bound even when the caller disables the configured limit.
+        return bytes < static_cast<uint64_t>(UINT_MAX) &&
+            bytes < static_cast<uint64_t>(SIZE_MAX) &&
+            (_maxPayloadCapacity == 0 || bytes <= _maxPayloadCapacity);
+    }
+
+    bool ensureStorage(uint64_t bytes)
+    {
+        if (!fitsCapacity(bytes) || !_payload.reserve(static_cast<unsigned int>(bytes)))
+        {
+            _overflowed = true;
+            return false;
         }
+        return true;
+    }
 
-        // Adiciona o comando (ex: "1b" ou "+10v")
+    bool sampleLimitReached() const
+    {
+        return _sampleCount == UINT32_MAX ||
+            (_maxSampleCount > 0 && _sampleCount >= _maxSampleCount);
+    }
+
+    void appendPendingUnit()
+    {
         _payload += _pendingCommand;
-
-        // Adiciona o tempo se houver (ex: "500ms")
         if (_pendingDuration > 0)
         {
-            _payload += _pendingDuration;
+            appendUnsigned(_pendingDuration);
             _payload += "ms";
         }
+    }
 
-        // Fecha o bloco de repetição se necessário
-        if (_repeatCount > 1)
+    // The caller reserves the complete resulting payload before any mutation.
+    void flushPending()
+    {
+        if (_repeatCount == 0) return;
+        const uint64_t unitLength = encodedCost(strlen(_pendingCommand), _pendingDuration, 1);
+        const uint64_t rleCost = 2 + digitCount(_repeatCount) + unitLength;
+        if (_repeatCount > 1 && rleCost <= static_cast<uint64_t>(_repeatCount) * unitLength)
         {
-            // No protocolo ASX simples, o hífen já conecta,
-            // mas se for um bloco complexo, usaria '&'.
-            // Para comandos simples, o prefixo basta.
-        }
-
-        // Reseta o estado
-        _repeatCount = 0;
-        _pendingCommand = "";
-        _pendingDuration = 0;
-    }
-
-public:
-    AsxNanoStream()
-    {
-        reset();
-    }
-
-    // Limpa o buffer para começar uma nova mensagem
-    void reset()
-    {
-        _payload = "";
-        _pendingCommand = "";
-        _pendingDuration = 0;
-        _repeatCount = 0;
-        _lastAnalogValue = 0; // Valor inicial padrão
-    }
-
-    // Define o valor base inicial (opcional, para ECG/Sensores)
-    void setBaseline(int value)
-    {
-        _lastAnalogValue = value;
-        _payload += "B";
-        _payload += value;
-        _payload += "#";
-    }
-
-    // Adiciona Estado Binário (Ligar/Desligar)
-    // Ex: addBinary(true, 500) -> gera "1b500ms"
-    void addBinary(bool state, uint16_t durationMs = 0)
-    {
-        String cmd = state ? "1b" : "0b";
-
-        // Verifica se é igual ao anterior (para comprimir)
-        if (cmd == _pendingCommand && durationMs == _pendingDuration)
-        {
-            _repeatCount++;
+            _payload += 'x';
+            appendUnsigned(_repeatCount);
+            _payload += '-';
+            appendPendingUnit();
         }
         else
         {
-            flushPending(); // Salva o anterior
-            _pendingCommand = cmd;
-            _pendingDuration = durationMs;
-            _repeatCount = 1;
+            for (uint32_t index = 0; index < _repeatCount; ++index) appendPendingUnit();
         }
+        _repeatCount = 0;
+        _pendingCommand[0] = '\0';
+        _pendingDuration = 0;
     }
 
-    // Adiciona Valor Analógico (Calcula Delta automaticamente)
-    // Ex: addAnalog(25, 100) se o anterior era 20 -> gera "+5v100ms"
-    void addAnalog(int value, uint16_t durationMs = 0)
+    AsxEncoderStatus addCommand(const char* command, uint32_t duration)
     {
-        int delta = value - _lastAnalogValue;
-        _lastAnalogValue = value; // Atualiza a referência
-
-        String cmd = "";
-        if (delta >= 0)
-            cmd += "+";
-        cmd += delta;
-        cmd += "v";
-
-        // Verifica compressão
-        if (cmd == _pendingCommand && durationMs == _pendingDuration)
+        const size_t commandLength = strlen(command);
+        if (commandLength == 0 || commandLength >= sizeof(_pendingCommand))
+            return AsxEncoderStatus::InvalidInput;
+        if (sampleLimitReached() || !ensureStorage(calculateProspectiveLength(command, duration)))
         {
-            _repeatCount++;
+            _overflowed = true;
+            return AsxEncoderStatus::BufferFull;
         }
+        if (continuesPending(command, duration))
+            ++_repeatCount;
         else
         {
             flushPending();
-            _pendingCommand = cmd;
-            _pendingDuration = durationMs;
+            memcpy(_pendingCommand, command, commandLength + 1);
+            _pendingDuration = duration;
             _repeatCount = 1;
         }
+        ++_sampleCount;
+        return isFlushRequired() ? AsxEncoderStatus::FlushRequired : AsxEncoderStatus::Success;
     }
 
-    // Finaliza e retorna a string pronta para envio
+public:
+    AsxNanoStream(unsigned int initialCapacity = 0, size_t maxPayloadCapacity = 0)
+        : _maxPayloadCapacity(maxPayloadCapacity), _maxRepeatCount(9999U),
+          _maxSampleCount(50000U)
+    {
+        reset();
+        if (initialCapacity > 0) reserve(initialCapacity);
+    }
+
+    void setMaxPayloadCapacity(size_t maximum) { _maxPayloadCapacity = maximum; }
+    size_t getMaxPayloadCapacity() const { return _maxPayloadCapacity; }
+    void setMaxRepeatCount(uint32_t maximum) { _maxRepeatCount = maximum; }
+    uint32_t getMaxRepeatCount() const { return _maxRepeatCount; }
+    void setMaxSampleCount(uint32_t maximum) { _maxSampleCount = maximum; }
+    uint32_t getMaxSampleCount() const { return _maxSampleCount; }
+    uint32_t getSampleCount() const { return _sampleCount; }
+    bool hasOverflowed() const { return _overflowed; }
+
+    void reserve(unsigned int bytes)
+    {
+        if (bytes == UINT_MAX || !_payload.reserve(bytes)) _overflowed = true;
+    }
+
+    bool isFlushRequired() const
+    {
+        if (_overflowed || sampleLimitReached()) return true;
+        // Division before multiplication prevents wraparound on 16-bit targets.
+        const size_t threshold = (_maxPayloadCapacity / 10) * 9 +
+            ((_maxPayloadCapacity % 10) * 9) / 10;
+        return _maxPayloadCapacity > 0 && length() >= threshold;
+    }
+
+    bool canAccept(const String& command, uint32_t durationMs = 0) const
+    {
+        // An empty String can signal allocation failure in a caller-built command.
+        return command.length() > 0 && command.length() < UINT_MAX &&
+            !sampleLimitReached() && fitsCapacity(calculateProspectiveLength(command.c_str(), durationMs));
+    }
+
+    void reset()
+    {
+        _payload = "";
+        _pendingCommand[0] = '\0';
+        _pendingDuration = 0;
+        _repeatCount = 0;
+        _lastAnalogValue = 0;
+        _sampleCount = 0;
+        _overflowed = false;
+    }
+
+    bool setBaseline(int32_t value)
+    {
+        char token[14];
+        char* output = token;
+        *output++ = 'B';
+        if (value < 0) *output++ = '-';
+        output = writeUnsigned(output, value < 0 ? static_cast<uint64_t>(-static_cast<int64_t>(value)) : value);
+        *output++ = '#';
+        *output = '\0';
+        if (!ensureStorage(static_cast<uint64_t>(length()) + strlen(token))) return false;
+        flushPending();
+        _payload += token;
+        _lastAnalogValue = value;
+        return true;
+    }
+
+    AsxEncoderStatus addBinaryWithStatus(bool state, uint32_t durationMs = 0)
+    {
+        return addCommand(state ? "1b" : "0b", durationMs);
+    }
+
+    bool addBinary(bool state, uint32_t durationMs = 0)
+    {
+        const AsxEncoderStatus status = addBinaryWithStatus(state, durationMs);
+        return status == AsxEncoderStatus::Success || status == AsxEncoderStatus::FlushRequired;
+    }
+
+    AsxEncoderStatus addAnalogWithStatus(int32_t value, uint32_t durationMs = 0)
+    {
+        const int64_t delta = static_cast<int64_t>(value) - _lastAnalogValue;
+        char command[13];
+        command[0] = delta < 0 ? '-' : '+';
+        char* end = writeUnsigned(command + 1, static_cast<uint64_t>(delta < 0 ? -delta : delta));
+        *end++ = 'v';
+        *end = '\0';
+        const AsxEncoderStatus status = addCommand(command, durationMs);
+        if (status == AsxEncoderStatus::Success || status == AsxEncoderStatus::FlushRequired)
+            _lastAnalogValue = value;
+        return status;
+    }
+
+    bool addAnalog(int32_t value, uint32_t durationMs = 0)
+    {
+        const AsxEncoderStatus status = addAnalogWithStatus(value, durationMs);
+        return status == AsxEncoderStatus::Success || status == AsxEncoderStatus::FlushRequired;
+    }
+
     String getPayload()
     {
-        flushPending(); // Garante que o último comando seja gravado
-        return _payload;
+        // Existing accepted samples remain retrievable after lowering the configured cap.
+        flushPending();
+        String result(_payload);
+        if (result.length() != _payload.length()) _overflowed = true;
+        return result;
     }
 
-    // Retorna o tamanho atual em bytes
-    int length()
+    static int digitCount(uint64_t value)
     {
-        return _payload.length(); // Nota: é aproximado se houver pending
+        int digits = 1;
+        while (value >= 10) { ++digits; value /= 10; }
+        return digits;
+    }
+
+    // size_t preserves exact lengths beyond INT_MAX on AVR.
+    size_t length() const
+    {
+        return static_cast<size_t>(static_cast<uint64_t>(_payload.length()) +
+            encodedCost(strlen(_pendingCommand), _pendingDuration, _repeatCount));
     }
 };
-
 #endif

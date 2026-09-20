@@ -1,6 +1,6 @@
 /*
  * ASXNanoStream Protocol - Primary Library Header
- * Version: 1.0.2
+ * Version: 1.0.4
  * License: MIT
  * Author: Adriano Xavier
  */
@@ -9,5 +9,6 @@
 #define ASX_NANO_STREAM_PRIMARY_H
 
 #include "ASXNanoStreamEncoder.h"
+#include "ASXProfileV2.h"
 
 #endif

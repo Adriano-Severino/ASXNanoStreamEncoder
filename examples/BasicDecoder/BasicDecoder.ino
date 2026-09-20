@@ -5,7 +5,7 @@
 #define LED_STATUS 13
 
 void executarOrdem(String comando, int valor) {
-    Serial.print("Comando Recebido: "); 
+    Serial.print("Comando Recebido: ");
     Serial.print(comando);
     Serial.print(" -> Valor: ");
     Serial.println(valor);
@@ -19,7 +19,7 @@ void executarOrdem(String comando, int valor) {
             Serial.println(">> Irrigacao DESLIGADA");
         }
     }
-    
+
     if (comando == "LED") {
         digitalWrite(LED_STATUS, valor);
     }
