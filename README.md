@@ -279,7 +279,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Release validation
 
-See [the security review](docs/security/review-2026-09-20.md) and [release notes](CHANGELOG.md). To run the three safety suites on a host with Clang:
+See [release notes](CHANGELOG.md). To run the three safety suites on a host with Clang:
 
 ```bash
 mkdir -p build
