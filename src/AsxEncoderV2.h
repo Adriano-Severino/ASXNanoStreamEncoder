@@ -10,7 +10,9 @@
 #ifndef ASX_ENCODER_V2_H
 #define ASX_ENCODER_V2_H
 
+#if defined(ARDUINO)
 #include <Arduino.h>
+#endif
 #include <stdint.h>
 #include <stddef.h>
 #include "ASXProfileV2.h"
@@ -124,6 +126,7 @@ public:
     bool BeginFrame(uint32_t profileId, uint32_t profileVersion, uint32_t sequenceNumber, uint8_t flags = 0, uint64_t timestamp = 0)
     {
         Reset();
+        if (profileId == 0 || profileVersion == 0) return false;
         if ((flags & ~uint8_t(3)) != 0) return false;
         _frameFlags = flags;
         if (!WriteByte(0xA2)) return false; // Magic Byte
@@ -144,6 +147,20 @@ public:
         _buffer[_length++] = 0x00;
         _frameStarted = true;
         return true;
+    }
+
+    /// <summary>
+    /// Inicia o frame usando diretamente o descritor do perfil gerado pelo portal ou do catálogo built-in.
+    /// </summary>
+    bool BeginFrame(const AsxProfileDescriptor& descriptor, uint32_t sequenceNumber, uint8_t flags = 0, uint64_t timestamp = 0)
+    {
+        return BeginFrame(descriptor.ProfileId, descriptor.Version, sequenceNumber, flags, timestamp);
+    }
+
+    bool BeginFrameWithDescriptor(const AsxProfileDescriptor* descriptor, uint32_t sequenceNumber, uint8_t flags = 0, uint64_t timestamp = 0)
+    {
+        if (descriptor == nullptr) return false;
+        return BeginFrame(descriptor->ProfileId, descriptor->Version, sequenceNumber, flags, timestamp);
     }
 
     bool EndFrame()

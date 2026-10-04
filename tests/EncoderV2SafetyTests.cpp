@@ -204,6 +204,34 @@ static void TestOversizedAutoBlock()
     assert(encoder.EndFrame());
 }
 
+static void TestCustomProfileDescriptorAndOverload()
+{
+    const AsxChannelConstraints customChannels[] = {
+        { AsxDataType::Int16, 0.1f, -40.0f, +85.0f },
+        { AsxDataType::Boolean, 1.0f, 0.0f, 1.0f }
+    };
+    const AsxProfileDescriptor customDescriptor = {
+        static_cast<AsxProfileType>(1042), 1042, 2, 2, customChannels
+    };
+
+    uint8_t storage[64] = {};
+    AsxEncoderV2 encoder(storage, sizeof(storage));
+
+    assert(encoder.BeginFrame(customDescriptor, 1));
+    const int64_t temp = 250;
+    assert(encoder.EncodeBlockRAW(0, customChannels[0].DataType, &temp, 1));
+    assert(encoder.EndFrame());
+
+    // 1042 em ULEB128: 0x92, 0x08
+    assert(storage[0] == 0xA2); // Magic
+    assert(storage[1] == 0x92); // ProfileId byte 1
+    assert(storage[2] == 0x08); // ProfileId byte 2
+    assert(storage[3] == 2);    // Version 2
+
+    assert(encoder.BeginFrameWithDescriptor(&customDescriptor, 2));
+    assert(encoder.EndFrame());
+}
+
 int main()
 {
     TestInvalidInputs();
@@ -212,6 +240,7 @@ int main()
     TestBitpackRoundTrip();
     TestCapacityForAllModes();
     TestOversizedAutoBlock();
+    TestCustomProfileDescriptorAndOverload();
     // Failed headers must never patch beyond the caller's declared capacity.
     for (size_t capacity = 0; capacity < 7; ++capacity)
     {
@@ -226,6 +255,8 @@ int main()
 
     uint8_t storage[32] = {};
     AsxEncoderV2 encoder(storage, sizeof(storage));
+    assert(!encoder.BeginFrame(0, 1, 1)); // Rejeita profileId == 0
+    assert(!encoder.BeginFrame(1, 0, 1)); // Rejeita profileVersion == 0
     assert(encoder.BeginFrame(1, 1, 1));
     assert(!encoder.CanFit(SIZE_MAX));
     assert(!encoder.WriteBytes(storage, SIZE_MAX));
@@ -250,4 +281,6 @@ int main()
     assert(AsxEncoderV2::EncodeZigZag(-1) == 1);
     assert(AsxEncoderV2::EncodeZigZag(INT64_MIN) == UINT64_MAX);
     assert(AsxEncoderV2::EncodeZigZag(INT64_MAX) == UINT64_MAX - 1);
+    return 0;
 }
+

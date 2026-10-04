@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.5 - 2026-10-04
+
+Feature release adding custom profile descriptor overloads and safe host compatibility:
+
+- Added `BeginFrame(const AsxProfileDescriptor& descriptor, ...)` and `BeginFrameWithDescriptor(const AsxProfileDescriptor* descriptor, ...)` overloads for direct compatibility with exported custom sensor profiles.
+- Added validation in `BeginFrame` to reject invalid `profileId == 0` or `profileVersion == 0`.
+- Added `#if defined(ARDUINO)` guard around `<Arduino.h>` to maintain clean compilation on non-Arduino host test runners.
+- Added comprehensive unit tests in `EncoderV2SafetyTests` for custom profile descriptors, ULEB128 profile encoding, and descriptor validation.
+
 ## 1.0.4 - 2026-09-20
 
 Security and compatibility release for the Arduino Library Manager.
